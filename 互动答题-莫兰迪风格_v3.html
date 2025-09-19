@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>互动答题（严格多选·莫兰迪蓝渐变）</title>
+<style>
+:root {
+--bg: #F2F3F5;
+  --card: #E8EBEF;
+  --accent: #D9DEE6;
+  --primary: #AFC3D6;
+  --primary-strong: #8FAAC4;
+  --secondary: #C3D2E0;
+  --text: #2F3A45;
+  --selected: #CDE0F1;
+  --button: #9EB5CB;
+  --buttonText: #1F2A33;
+  --correct: #B8DCCB;
+  --incorrect: #E1B6B6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC','Source Han Sans SC','Helvetica Neue',Arial,sans-serif;
+}
+.container { max-width: 960px; margin: 24px auto; padding: 16px; }
+
+.header {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--accent), var(--primary));
+  padding: 14px 16px; border-radius: 14px;
+}
+.title { font-size: 20px; font-weight: 800; letter-spacing: .5px; }
+.meta { font-size: 14px; opacity:.95; }
+
+.progress-wrap { width: 100%; height: 10px; background: #d7dde6; border-radius: 8px; overflow:hidden; margin: 12px 0 16px; }
+.progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary), var(--primary-strong)); transition: width 300ms ease; }
+
+.card { background: var(--card); border-radius: 16px; padding: 20px; box-shadow: 0 6px 24px rgba(0,0,0,.06); }
+.question-text { font-size: 18px; line-height: 1.6; margin-bottom: 16px; }
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr)); /* 每行2个 */
+  gap: 14px;
+}
+@media (max-width: 680px) {
+  .options { grid-template-columns: 1fr; } /* 小屏单列 */
+}
+
+.option {
+  padding: 14px; border-radius: 12px; cursor: pointer; user-select: none;
+  display:flex; align-items:center; gap:12px; min-height: 64px;
+  background: linear-gradient(135deg, var(--accent), var(--card));
+  border: 1px solid rgba(0,0,0,0.06);
+}
+.option:hover { outline: 2px solid var(--primary); }
+.option .badge { min-width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--buttonText);
+  display:inline-flex; align-items:center; justify-content:center; font-weight: 800; }
+.option .text { flex:1; word-break: break-word; }
+.option.selected { background: var(--selected); outline: 2px solid var(--primary-strong); }
+
+.footer { display:flex; align-items:center; justify-content:space-between; margin-top: 16px; gap: 10px; flex-wrap: wrap; }
+.btn {
+  border: none; padding: 10px 16px; border-radius: 10px; cursor: pointer;
+  background: var(--button); color: var(--buttonText); font-weight: 700;
+}
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.small { font-size: 13px; opacity: .8; }
+
+.result { margin-top: 10px; padding: 10px 12px; border-radius: 10px; display:none; }
+.result.correct { background: var(--correct); }
+.result.incorrect { background: var(--incorrect); }
+
+.summary { display:none; margin-top: 20px; }
+kbd { background: #eee; border: 1px solid #ccc; border-bottom-color: #bbb; border-radius: 4px; padding: 1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title">人工智能训练师试题 · 严格多选判分</div>
+    <div class="meta">题目总数：<span id="total">0</span> · 已作答：<span id="answered">0</span></div>
+  </div>
+
+  <div class="progress-wrap"><div class="progress-bar" id="progress"></div></div>
+
+  <div class="card" id="quiz-card">
+    <div id="counter" class="meta" style="margin-bottom:6px;">第 1 题</div>
+    <div id="question" class="question-text"></div>
+    <div id="options" class="options"></div>
+    <div id="feedback" class="result"></div>
+    <div class="footer">
+      <div>
+        <button class="btn" id="prevBtn">上一题（P）</button>
+        <button class="btn" id="nextBtn" disabled>下一题（N）</button>
+      </div>
+      <div>
+        <button class="btn" id="submitBtn">交卷</button>
+      </div>
+      <div class="small">多选严格判分：所选集合必须与正确答案完全一致。快捷键：<kbd>P</kbd> 上一题 · <kbd>N</kbd> 下一题 · <kbd>S</kbd> 交卷</div>
+    </div>
+  </div>
+
+  <div class="summary" id="summary">
+    <div class="card">
+      <div style="font-size:20px; font-weight:800; margin-bottom:8px;">成绩单</div>
+      <div id="finalText" style="margin-bottom:12px;"></div>
+      <div id="detail"></div>
+      <div style="margin-top:12px;">
+        <button class="btn" id="restartBtn">重新开始</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = [{"question": "1. 人工智能训练师的首要职业责任是", "options": [{"label": "A", "text": "提高算法效率"}, {"label": "B", "text": "保障数据安全和用户隐私"}, {"label": "C", "text": "降低企业成本"}, {"label": "D", "text": "快速完成标注任务"}], "answer": ["B"]}, {"question": "2. 发现同事在标注过程中故意篡改数据，应该", "options": [{"label": "A", "text": "私下提醒同事"}, {"label": "B", "text": "直接向监管部门举报"}, {"label": "C", "text": "保留证据并向直属上级报告"}, {"label": "D", "text": "视而不见以维持团队关系"}], "answer": ["C"]}, {"question": "3. 监督学习的核心特点是", "options": [{"label": "A", "text": "使用无标签数据"}, {"label": "B", "text": "依赖人工标注数据"}, {"label": "C", "text": "仅用于分类任务"}, {"label": "D", "text": "无需特征提取"}], "answer": ["B"]}, {"question": "4. 以下属于机器学习中“分类”算法的是", "options": [{"label": "A", "text": "线性回归"}, {"label": "B", "text": "K-Means"}, {"label": "C", "text": "支持向量机（SVM）"}, {"label": "D", "text": "主成分分析（PCA）"}], "answer": ["C"]}, {"question": "5. 过拟合的典型表现是", "options": [{"label": "A", "text": "训练集和测试集准确率均低"}, {"label": "B", "text": "训练集准确率高，测试集低"}, {"label": "C", "text": "训练集和测试集准确率均高"}, {"label": "D", "text": "训练集准确率低，测试集高"}], "answer": ["B"]}, {"question": "6. 以下库中专门用于图像处理的是", "options": [{"label": "A", "text": "Pandas"}, {"label": "B", "text": "OpenCV"}, {"label": "C", "text": "Scikit-learn"}, {"label": "D", "text": "Matplotlib"}], "answer": ["B"]}, {"question": "7. 交叉验证（Cross-Validation）主要用于", "options": [{"label": "A", "text": "减少数据量"}, {"label": "B", "text": "提高模型训练速度"}, {"label": "C", "text": "评估模型泛化能力"}, {"label": "D", "text": "降低标注成本"}], "answer": ["C"]}, {"question": "8. 无监督学习的典型应用场景是", "options": [{"label": "A", "text": "垃圾邮件分类"}, {"label": "B", "text": "客户群体聚类"}, {"label": "C", "text": "房价预测"}, {"label": "D", "text": "情感分析"}], "answer": ["B"]}, {"question": "9. 以下不属于数据清洗操作的是", "options": [{"label": "A", "text": "删除重复值"}, {"label": "B", "text": "填充缺失值"}, {"label": "C", "text": "数据标注"}, {"label": "D", "text": "异常值处理"}], "answer": ["C"]}, {"question": "10. 网络爬虫（Web Crawler）的主要功能是", "options": [{"label": "A", "text": "数据存储"}, {"label": "B", "text": "自动化采集网页数据"}, {"label": "C", "text": "数据可视化"}, {"label": "D", "text": "模型训练"}], "answer": ["B"]}, {"question": "11. 数据增强（Data Augmentation）常用于解决", "options": [{"label": "A", "text": "数据量不足问题"}, {"label": "B", "text": "硬件资源不足问题"}, {"label": "C", "text": "模型过拟合问题"}, {"label": "D", "text": "数据标注错误问题"}], "answer": ["A"]}, {"question": "12. 处理非结构化数据（如文本、图像）的常用工具是", "options": [{"label": "A", "text": "MySQL"}, {"label": "B", "text": "MongoDB"}, {"label": "C", "text": "Excel"}, {"label": "D", "text": "SQL Server"}], "answer": ["B"]}, {"question": "13. Kettle中数据行需要从一个控件同时流转到两个控件中，在进行连线时，需要使用什么方式", "options": [{"label": "A", "text": "分发"}, {"label": "B", "text": "复制"}, {"label": "C", "text": "什么也不做"}, {"label": "D", "text": "拆分"}], "answer": ["A"]}, {"question": "14. 数据采集中需避免的伦理风险是", "options": [{"label": "A", "text": "使用公开数据集"}, {"label": "B", "text": "未经授权采集个人数据"}, {"label": "C", "text": "数据加密存储"}, {"label": "D", "text": "数据匿名化处理"}], "answer": ["B"]}, {"question": "15. 以下属于时序数据的是", "options": [{"label": "A", "text": "用户性别"}, {"label": "B", "text": "股票价格每日波动"}, {"label": "C", "text": "商品图片"}, {"label": "D", "text": "客户ID"}], "answer": ["B"]}, {"question": "16. 数据分箱（Binning）主要用于", "options": [{"label": "A", "text": "降低数据维度"}, {"label": "B", "text": "减少噪声影响"}, {"label": "C", "text": "处理连续数据离散化"}, {"label": "D", "text": "提高数据存储效率"}], "answer": ["C"]}, {"question": "17. 图像语义分割标注要求标注", "options": [{"label": "A", "text": "物体边界框"}, {"label": "B", "text": "每个像素的类别"}, {"label": "C", "text": "图像整体标签"}, {"label": "D", "text": "关键点坐标"}], "answer": ["B"]}, {"question": "18. 以下工具适用于文本情感分类标注的是", "options": [{"label": "A", "text": "LabelImg"}, {"label": "B", "text": "Label Studio"}, {"label": "C", "text": "COCO Annotator"}, {"label": "D", "text": "CVAT"}], "answer": ["B"]}, {"question": "19. 语音数据标注的最大挑战是", "options": [{"label": "A", "text": "标注工具操作复杂"}, {"label": "B", "text": "背景噪声干扰"}, {"label": "C", "text": "数据存储空间不足"}, {"label": "D", "text": "标注员数量不足"}], "answer": ["B"]}, {"question": "20. 标注一致性的定义是", "options": [{"label": "A", "text": "同一标注员多次结果相同"}, {"label": "B", "text": "不同标注员对同一数据结果一致"}, {"label": "C", "text": "标注结果与用户需求一致"}, {"label": "D", "text": "标注格式统一"}], "answer": ["B"]}, {"question": "21. 目标检测任务中常用的标注形式是", "options": [{"label": "A", "text": "多边形标注"}, {"label": "B", "text": "矩形边界框（Bounding Box）"}, {"label": "C", "text": "关键点连线"}, {"label": "D", "text": "文本标签"}], "answer": ["B"]}, {"question": "22. 以下标注类型属于“实例分割”的是", "options": [{"label": "A", "text": "标注图像中的所有人"}, {"label": "B", "text": "标注图像中“人”的像素区域"}, {"label": "C", "text": "标注每个“人”实例的像素区域"}, {"label": "D", "text": "标注图像是否为“人物”"}], "answer": ["C"]}, {"question": "23. 标注质量检查的常用方法是", "options": [{"label": "A", "text": "全量审核"}, {"label": "B", "text": "随机抽样审核"}, {"label": "C", "text": "自动算法验证"}, {"label": "D", "text": "忽略小错误"}], "answer": ["B"]}, {"question": "24. 医疗影像标注需要特别关注", "options": [{"label": "A", "text": "标注速度"}, {"label": "B", "text": "标注员医学知识"}, {"label": "C", "text": "工具界面美观度"}, {"label": "D", "text": "数据存储成本"}], "answer": ["B"]}, {"question": "25. 视频标注中，关键帧标注的目的是", "options": [{"label": "A", "text": "减少标注数据量"}, {"label": "B", "text": "捕捉动态变化关键点"}, {"label": "C", "text": "提高视频分辨率"}, {"label": "D", "text": "压缩视频文件大小"}], "answer": ["B"]}, {"question": "26. 以下属于多模态数据标注的是", "options": [{"label": "A", "text": "同时标注图像和对应文本描述"}, {"label": "B", "text": "仅标注图像类别"}, {"label": "C", "text": "仅标注音频时长"}, {"label": "D", "text": "仅标注视频帧率"}], "answer": ["A"]}, {"question": "27. 数据标注任务的优先级应首先考虑", "options": [{"label": "A", "text": "数据敏感性"}, {"label": "B", "text": "项目截止时间"}, {"label": "C", "text": "标注员技能"}, {"label": "D", "text": "标注工具性能"}], "answer": ["A"]}, {"question": "28. 标注指南（Guideline）的核心作用是", "options": [{"label": "A", "text": "统一标注标准"}, {"label": "B", "text": "提高标注速度"}, {"label": "C", "text": "减少标注员数量"}, {"label": "D", "text": "降低硬件成本"}], "answer": ["A"]}, {"question": "29. 以下情况可能导致标注偏差的是", "options": [{"label": "A", "text": "标注员培训不足"}, {"label": "B", "text": "使用高性能标注工具"}, {"label": "C", "text": "数据分布均匀"}, {"label": "D", "text": "标注任务简单"}], "answer": ["A"]}, {"question": "30. 标注过程中发现数据存在错误，应该", "options": [{"label": "A", "text": "自行修改数据"}, {"label": "B", "text": "继续标注以完成任务"}, {"label": "C", "text": "记录问题并反馈给数据团队"}, {"label": "D", "text": "忽略错误"}], "answer": ["C"]}, {"question": "31. 3D点云数据标注常用于", "options": [{"label": "A", "text": "自动驾驶场景"}, {"label": "B", "text": "文本分类"}, {"label": "C", "text": "语音识别"}, {"label": "D", "text": "视频压缩"}], "answer": ["A"]}, {"question": "32. 标注员绩效考核的关键指标是", "options": [{"label": "A", "text": "标注速度和准确性"}, {"label": "B", "text": "标注工具熟练度"}, {"label": "C", "text": "每日工作时长"}, {"label": "D", "text": "团队协作能力"}], "answer": ["A"]}, {"question": "33. 模型部署后需监控的核心指标是", "options": [{"label": "A", "text": "用户界面美观度"}, {"label": "B", "text": "推理延迟和资源占用率"}, {"label": "C", "text": "训练数据量"}, {"label": "D", "text": "标注员数量"}], "answer": ["B"]}, {"question": "34. 以下工具可用于模型版本管理的是", "options": [{"label": "A", "text": "Git"}, {"label": "B", "text": "Jenkins"}, {"label": "C", "text": "Docker"}, {"label": "D", "text": "Kubernetes"}], "answer": ["A"]}, {"question": "35. 持续集成（CI）的主要目的是", "options": [{"label": "A", "text": "自动化模型训练"}, {"label": "B", "text": "快速迭代和测试代码"}, {"label": "C", "text": "管理硬件资源"}, {"label": "D", "text": "降低数据存储成本"}], "answer": ["B"]}, {"question": "36. A/B测试常用于", "options": [{"label": "A", "text": "比较不同模型版本的性能"}, {"label": "B", "text": "提高数据标注速度"}, {"label": "C", "text": "优化标注工具界面"}, {"label": "D", "text": "减少服务器数量"}], "answer": ["A"]}, {"question": "37. 容器化技术（如Docker）的优势是", "options": [{"label": "A", "text": "提升模型准确率"}, {"label": "B", "text": "实现环境隔离和快速部署"}, {"label": "C", "text": "降低数据采集成本"}, {"label": "D", "text": "自动生成标注结果"}], "answer": ["B"]}, {"question": "38. 日志分析工具（如ELK Stack）用于", "options": [{"label": "A", "text": "监控系统异常"}, {"label": "B", "text": "数据清洗"}, {"label": "C", "text": "模型训练加速"}, {"label": "D", "text": "提高标注一致性"}], "answer": ["A"]}, {"question": "39. 模型回滚（Rollback）通常是因为", "options": [{"label": "A", "text": "新模型训练时间过长"}, {"label": "B", "text": "新版本出现严重性能下降"}, {"label": "C", "text": "标注数据不足"}, {"label": "D", "text": "硬件成本上升"}], "answer": ["B"]}, {"question": "40. 负载均衡（Load Balancing）的作用是", "options": [{"label": "A", "text": "提高模型准确率"}, {"label": "B", "text": "减少数据存储空间"}, {"label": "C", "text": "均衡服务器请求压力"}, {"label": "D", "text": "加快标注速度"}], "answer": ["C"]}, {"question": "41. 人工智能伦理的核心原则包括", "options": [{"label": "A", "text": "公平性"}, {"label": "B", "text": "可解释性"}, {"label": "C", "text": "隐私保护"}, {"label": "D", "text": "技术垄断"}, {"label": "E", "text": "数据可视化"}], "answer": ["A", "B", "C"]}, {"question": "42. 数据标注过程中需避免的行为有", "options": [{"label": "A", "text": "标注主观猜测数据"}, {"label": "B", "text": "标注完成后交叉验证"}, {"label": "C", "text": "泄露标注数据内容"}, {"label": "D", "text": "使用未授权数据集"}, {"label": "E", "text": "标注结果加密存储"}], "answer": ["A", "C", "D"]}, {"question": "43. 机器学习任务类型包括", "options": [{"label": "A", "text": "分类"}, {"label": "B", "text": "回归"}, {"label": "C", "text": "聚类"}, {"label": "D", "text": "降维"}, {"label": "E", "text": "数据清洗"}], "answer": ["A", "B", "C", "D"]}, {"question": "44. 以下属于深度学习框架的是", "options": [{"label": "A", "text": "Scikit-learn"}, {"label": "B", "text": "Matplotlib"}, {"label": "C", "text": "Keras"}, {"label": "D", "text": "XGBoost"}, {"label": "E", "text": "PyTorch"}], "answer": ["C", "E"]}, {"question": "45. 监督学习的特点包括", "options": [{"label": "A", "text": "需要标注数据"}, {"label": "B", "text": "能用于预测连续值"}, {"label": "C", "text": "可处理无标签数据"}, {"label": "D", "text": "自动生成训练标签"}, {"label": "E", "text": "依赖特征工程"}], "answer": ["A", "B", "E"]}, {"question": "46. 以下属于数据预处理步骤的是", "options": [{"label": "A", "text": "缺失值填充"}, {"label": "B", "text": "数据归一化"}, {"label": "C", "text": "模型训练"}, {"label": "D", "text": "特征选择"}, {"label": "E", "text": "模型调参"}], "answer": ["A", "B", "D"]}, {"question": "47. 过拟合的解决方法包括", "options": [{"label": "A", "text": "增加训练数据量"}, {"label": "B", "text": "使用正则化技术"}, {"label": "C", "text": "降低模型复杂度"}, {"label": "D", "text": "提高学习率"}, {"label": "E", "text": "增强模型深度"}], "answer": ["A", "B", "C"]}, {"question": "48. 无监督学习的典型应用场景有", "options": [{"label": "A", "text": "客户分群"}, {"label": "B", "text": "图像分类"}, {"label": "C", "text": "异常检测"}, {"label": "D", "text": "文本翻译"}, {"label": "E", "text": "情感分析"}], "answer": ["A", "C"]}, {"question": "49. 数据增强的常用方法包括", "options": [{"label": "A", "text": "图像旋转"}, {"label": "B", "text": "添加噪声"}, {"label": "C", "text": "数据删除"}, {"label": "D", "text": "归一化"}, {"label": "E", "text": "特征降维"}], "answer": ["A", "B"]}, {"question": "50. 数据采集中可能涉及的伦理问题包括", "options": [{"label": "A", "text": "数据版权"}, {"label": "B", "text": "用户知情权"}, {"label": "C", "text": "数据存储成本"}, {"label": "D", "text": "数据偏见"}, {"label": "E", "text": "数据压缩率"}], "answer": ["A", "B", "D"]}, {"question": "51. 数据清洗的主要任务包括", "options": [{"label": "A", "text": "数据标注"}, {"label": "B", "text": "模型训练"}, {"label": "C", "text": "填充缺失值"}, {"label": "D", "text": "异常值处理"}, {"label": "E", "text": "删除重复数据"}], "answer": ["C", "D", "E"]}, {"question": "52. 适合处理非结构化数据的工具是", "options": [{"label": "A", "text": "MongoDB"}, {"label": "B", "text": "Hadoop"}, {"label": "C", "text": "MySQL"}, {"label": "D", "text": "Elasticsearch"}, {"label": "E", "text": "Excel"}], "answer": ["A", "B", "D"]}, {"question": "53. 数据标准化的方法包括", "options": [{"label": "A", "text": "Z-Score标准化"}, {"label": "B", "text": "Min-Max归一化"}, {"label": "C", "text": "小数定标法"}, {"label": "D", "text": "对数变换"}, {"label": "E", "text": "数据分箱"}], "answer": ["A", "B"]}, {"question": "54. 时序数据的特征包括", "options": [{"label": "A", "text": "数据按时间顺序排列"}, {"label": "B", "text": "具有周期性"}, {"label": "C", "text": "包含空间坐标"}, {"label": "D", "text": "可独立采样"}, {"label": "E", "text": "高维度稀疏性"}], "answer": ["A", "B"]}, {"question": "55. 数据分箱的作用是", "options": [{"label": "A", "text": "降低数据噪声"}, {"label": "B", "text": "减少过拟合风险"}, {"label": "C", "text": "离散化连续特征"}, {"label": "D", "text": "提高计算效率"}, {"label": "E", "text": "增强数据可视化"}], "answer": ["A", "C"]}, {"question": "56. 网络爬虫可能面临的法律风险包括", "options": [{"label": "A", "text": "侵犯隐私权"}, {"label": "B", "text": "违反网站Robots协议"}, {"label": "C", "text": "数据加密成本"}, {"label": "D", "text": "服务器负载过高"}, {"label": "E", "text": "爬虫代码复杂度"}], "answer": ["A", "B"]}, {"question": "57. 影响标注质量的关键因素包括", "options": [{"label": "A", "text": "标注指南的清晰度"}, {"label": "B", "text": "标注员专业背景"}, {"label": "C", "text": "标注工具功能"}, {"label": "D", "text": "标注任务复杂度"}, {"label": "E", "text": "标注数据存储格式"}], "answer": ["A", "B", "C", "D"]}, {"question": "58. 语音数据标注的常见类型包括", "options": [{"label": "A", "text": "语音转文本"}, {"label": "B", "text": "情感分类"}, {"label": "C", "text": "声纹识别"}, {"label": "D", "text": "语音降噪"}, {"label": "E", "text": "音频格式转换"}], "answer": ["A", "B", "C"]}, {"question": "59. 图像标注中属于细粒度标注的是", "options": [{"label": "A", "text": "标注'鸟类'类别"}, {"label": "B", "text": "标注'麻雀'亚种"}, {"label": "C", "text": "标注鸟类羽毛颜色"}, {"label": "D", "text": "标注图像拍摄时间"}, {"label": "E", "text": "标注图像分辨率"}], "answer": ["B", "C"]}, {"question": "60. 视频标注的关键技术包括", "options": [{"label": "A", "text": "关键帧提取"}, {"label": "B", "text": "目标跟踪"}, {"label": "C", "text": "音频分离"}, {"label": "D", "text": "分辨率调整"}, {"label": "E", "text": "视频倍速播放"}], "answer": ["A", "B"]}, {"question": "61. 文本标注任务包括", "options": [{"label": "A", "text": "命名实体识别"}, {"label": "B", "text": "情感极性标注"}, {"label": "C", "text": "文本摘要生成"}, {"label": "D", "text": "语法纠错"}, {"label": "E", "text": "字体颜色标注"}], "answer": ["A", "B"]}, {"question": "62. 标注一致性保障措施包括", "options": [{"label": "A", "text": "多标注员交叉验证"}, {"label": "B", "text": "定期校准标注标准"}, {"label": "C", "text": "使用自动化标注工具"}, {"label": "D", "text": "提高标注员薪酬"}, {"label": "E", "text": "减少标注任务数量"}], "answer": ["A", "B"]}, {"question": "63. 医疗数据标注的特殊要求包括", "options": [{"label": "A", "text": "标注员需医学资质"}, {"label": "B", "text": "数据匿名化处理"}, {"label": "C", "text": "标注结果需专家审核"}, {"label": "D", "text": "标注工具界面美观"}, {"label": "E", "text": "标注数据实时上传"}], "answer": ["A", "B", "C"]}, {"question": "64. 3D点云标注的应用场景包括", "options": [{"label": "A", "text": "自动驾驶障碍物识别"}, {"label": "B", "text": "人脸表情识别"}, {"label": "C", "text": "工业零件尺寸测量"}, {"label": "D", "text": "语音助手开发"}, {"label": "E", "text": "网页排版优化"}], "answer": ["A", "C"]}, {"question": "65. 标注任务优先级分配依据包括", "options": [{"label": "A", "text": "数据敏感性"}, {"label": "B", "text": "项目截止时间"}, {"label": "C", "text": "标注工具版本"}, {"label": "D", "text": "标注员技能匹配度"}, {"label": "E", "text": "标注员工作时长"}], "answer": ["A", "B", "D"]}, {"question": "66. 标注质量评估指标包括", "options": [{"label": "A", "text": "准确率"}, {"label": "B", "text": "召回率"}, {"label": "C", "text": "标注速度"}, {"label": "D", "text": "一致性分数"}, {"label": "E", "text": "数据存储容量"}], "answer": ["A", "B", "D"]}, {"question": "67. 多模态数据标注的特点是", "options": [{"label": "A", "text": "同时处理多种数据类型"}, {"label": "B", "text": "需跨模态关联标注"}, {"label": "C", "text": "仅限图像和文本组合"}, {"label": "D", "text": "标注工具复杂度低"}, {"label": "E", "text": "单一模态数据增强"}], "answer": ["A", "B"]}, {"question": "68. 语义分割标注与实例分割标注的区别是", "options": [{"label": "A", "text": "前者标注像素类别，后者标注实例ID"}, {"label": "B", "text": "前者用于分类，后者用于检测"}, {"label": "C", "text": "前者不区分同类物体，后者区分"}, {"label": "D", "text": "前者需要边界框，后者需要多边形"}, {"label": "E", "text": "前者依赖颜色编码，后者依赖纹理特征"}], "answer": ["A", "C"]}, {"question": "69. 标注过程中发现数据错误,不正确处理方式是", "options": [{"label": "A", "text": "直接修改原始数据"}, {"label": "B", "text": "记录问题并反馈"}, {"label": "C", "text": "忽略错误继续标注"}, {"label": "D", "text": "终止整个标注任务"}, {"label": "E", "text": "使用自动修复工具"}], "answer": ["A", "C", "D"]}, {"question": "70. 标注工具的核心功能包括", "options": [{"label": "A", "text": "支持多种标注类型"}, {"label": "B", "text": "提供协作标注能力"}, {"label": "C", "text": "自动生成标注报告"}, {"label": "D", "text": "内置模型训练接口"}, {"label": "E", "text": "实时数据加密传输"}], "answer": ["A", "B", "C"]}, {"question": "71. 提高标注效率的方法包括", "options": [{"label": "A", "text": "预标注技术辅助"}, {"label": "B", "text": "批量处理相似数据"}, {"label": "C", "text": "减少质量检查环节"}, {"label": "D", "text": "增加标注员数量"}, {"label": "E", "text": "随机删除部分数据"}], "answer": ["A", "B"]}, {"question": "72. 标注指南应包含的内容有", "options": [{"label": "A", "text": "标注规则示例"}, {"label": "B", "text": "边界案例处理方法"}, {"label": "C", "text": "标注员奖惩制度"}, {"label": "D", "text": "任务时间安排"}, {"label": "E", "text": "公司财务报表"}], "answer": ["A", "B"]}, {"question": "73. 模型部署后需监控的指标包括", "options": [{"label": "A", "text": "推理延迟"}, {"label": "B", "text": "内存占用率"}, {"label": "C", "text": "用户点击率"}, {"label": "D", "text": "训练数据量"}, {"label": "E", "text": "模型训练准确率"}], "answer": ["A", "B"]}, {"question": "74. 持续集成的核心功能包括", "options": [{"label": "A", "text": "自动化代码测试"}, {"label": "B", "text": "快速版本回滚"}, {"label": "C", "text": "资源成本优化"}, {"label": "D", "text": "环境一致性保障"}, {"label": "E", "text": "硬件设备采购"}], "answer": ["A", "D"]}, {"question": "75. 容器化技术的优势包括", "options": [{"label": "A", "text": "环境隔离"}, {"label": "B", "text": "快速部署"}, {"label": "C", "text": "提升模型准确率"}, {"label": "D", "text": "降低硬件依赖"}, {"label": "E", "text": "增强数据隐私"}], "answer": ["A", "B", "D"]}, {"question": "76. A/B测试的应用场景包括", "options": [{"label": "A", "text": "比较模型性能差异"}, {"label": "B", "text": "验证用户界面优化效果"}, {"label": "C", "text": "测试标注工具稳定性"}, {"label": "D", "text": "评估数据清洗策略"}, {"label": "E", "text": "优化服务器散热方案"}], "answer": ["A", "B"]}, {"question": "77. 日志分析工具的功能包括", "options": [{"label": "A", "text": "实时监控系统异常"}, {"label": "B", "text": "可视化日志数据"}, {"label": "C", "text": "自动化模型训练"}, {"label": "D", "text": "数据标注质量检查"}, {"label": "E", "text": "生成随机测试数据"}], "answer": ["A", "B"]}, {"question": "78. 模型版本控制需记录的信息包括", "options": [{"label": "A", "text": "训练超参数"}, {"label": "B", "text": "数据集版本"}, {"label": "C", "text": "标注员信息"}, {"label": "D", "text": "模型性能指标"}, {"label": "E", "text": "服务器IP地址"}], "answer": ["A", "B", "D"]}, {"question": "79. 负载均衡技术的作用包括", "options": [{"label": "A", "text": "提高系统可用性"}, {"label": "B", "text": "分散服务器压力"}, {"label": "C", "text": "加速数据标注"}, {"label": "D", "text": "降低网络延迟"}, {"label": "E", "text": "减少数据存储空间"}], "answer": ["A", "B"]}, {"question": "80. 智能系统回滚的触发条件包括", "options": [{"label": "A", "text": "新模型准确率下降"}, {"label": "B", "text": "服务器内存不足"}, {"label": "C", "text": "用户投诉量激增"}, {"label": "D", "text": "标注数据量不足"}, {"label": "E", "text": "代码注释不规范"}], "answer": ["A", "C"]}];
+
+let idx = 0;
+const answers = new Array(DATA.length).fill(null).map(()=> new Set()); // 用户选择集
+document.getElementById('total').textContent = DATA.length;
+
+const elQ = document.getElementById('question');
+const elOps = document.getElementById('options');
+const elFb = document.getElementById('feedback');
+const elCounter = document.getElementById('counter');
+const elNext = document.getElementById('nextBtn');
+const elPrev = document.getElementById('prevBtn');
+const elSubmit = document.getElementById('submitBtn');
+const elProg = document.getElementById('progress');
+const elSummary = document.getElementById('summary');
+const elCard = document.getElementById('quiz-card');
+const elFinal = document.getElementById('finalText');
+const elDetail = document.getElementById('detail');
+const elAnswered = document.getElementById('answered');
+const elRestart = document.getElementById('restartBtn');
+
+function render() {
+  const q = DATA[idx];
+  elCard.style.display = 'block';
+  elSummary.style.display = 'none';
+  elCounter.textContent = '第 ' + (idx+1) + ' 题' + (q.answer.length>1? '（多选）':'（单选/判断）');
+  elQ.textContent = q.question;
+  elOps.innerHTML = '';
+  elFb.style.display = 'none';
+  elProg.style.width = (idx/DATA.length*100).toFixed(2) + '%';
+  elPrev.disabled = (idx===0);
+
+  q.options.forEach((o) => {
+    const node = document.createElement('div');
+    node.className = 'option';
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.textContent = o.label;
+    const txt = document.createElement('div');
+    txt.className = 'text';
+    txt.textContent = o.text;
+    node.appendChild(badge); node.appendChild(txt);
+
+    const set = answers[idx];
+    if (set.has(o.label)) node.classList.add('selected');
+
+    node.addEventListener('click', () => {
+      const multi = q.answer.length > 1;
+      if (!multi) { set.clear(); }
+      if (set.has(o.label)) set.delete(o.label); else set.add(o.label);
+      Array.from(elOps.children).forEach(ch=>ch.classList.remove('selected'));
+      set.forEach(L=>{
+        const child = Array.from(elOps.children).find(c=>c.querySelector('.badge').textContent===L);
+        if (child) child.classList.add('selected');
+      });
+      updateAnswered();
+      elNext.disabled = set.size===0;
+    });
+
+    elOps.appendChild(node);
+  });
+
+  elNext.disabled = answers[idx].size===0;
+}
+
+function updateAnswered() {
+  const c = answers.filter(s=>s.size>0).length;
+  document.getElementById('answered').textContent = c;
+}
+
+elNext.addEventListener('click', () => {
+  if (idx < DATA.length-1) { idx += 1; render(); }
+  else { elSubmit.click(); }
+});
+elPrev.addEventListener('click', () => {
+  if (idx > 0) { idx -= 1; render(); }
+});
+elSubmit.addEventListener('click', () => {
+  let score = 0;
+  const details = [];
+  DATA.forEach((q, i) => {
+    const sel = Array.from(answers[i]).sort().join('');
+    const corr = q.answer.slice().sort().join('');
+    const ok = sel === corr;
+    if (ok) score += 1;
+    details.push({i, sel, corr, ok});
+  });
+  elCard.style.display = 'none';
+  elSummary.style.display = 'block';
+  elFinal.textContent = '共 ' + DATA.length + ' 题；每题 1 分；总分：' + score + ' 分。';
+  const wrong = details.filter(d=>!d.ok);
+  elDetail.innerHTML = wrong.length ? ('错题（' + wrong.length + '）：<ul>' + wrong.map(d=>'<li>第 ' + (d.i+1) + ' 题，您的选择：' + (d.sel||'未作答') + '；正确答案：' + d.corr + '</li>').join('') + '</ul>')
+    : '全部正确，做得很好。';
+});
+
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'n') elNext.click();
+  if (k === 'p') elPrev.click();
+  if (k === 's') elSubmit.click();
+});
+if (elRestart) elRestart.addEventListener('click', () => {
+  for (let i=0;i<answers.length;i++) answers[i].clear();
+  idx = 0; updateAnswered(); render();
+});
+
+updateAnswered();
+render();
+</script>
+</body>
+</html>
